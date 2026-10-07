@@ -46,6 +46,8 @@
     overflow-y: auto;
   }
   .scene.active { opacity: 1; pointer-events: auto; transform: none; }
+  /* screens she can't see shouldn't burn battery on animations */
+  .scene:not(.active), .scene:not(.active) * { animation-play-state: paused !important; }
   .scene > :first-child { margin-top: auto; }
   .scene > :last-child { margin-bottom: auto; }
 
@@ -229,7 +231,7 @@
   .dish.on { border-color: var(--rose); background: rgba(255, 143, 177, .22); }
 
   /* Constellation lock */
-  #constel { width: min(330px, 84vw); aspect-ratio: 1; margin-top: 6px; touch-action: manipulation; flex-shrink: 0; }
+  #constel { width: min(330px, 84vw); aspect-ratio: 1; margin-top: 6px; touch-action: manipulation; flex-shrink: 0; cursor: pointer; }
   #constel .bg { fill: #fff; opacity: .35; }
   #constel .st { fill: #fff; }
   #constel .hit { fill: transparent; cursor: pointer; }
@@ -314,7 +316,7 @@
   .meaning { opacity: 0; transition: opacity 2s ease .6s; font-size: 18px; }
 
   /* Rose */
-  #rose { width: min(300px, 80vw); aspect-ratio: 1; touch-action: none; cursor: pointer; flex-shrink: 0; -webkit-user-select: none; user-select: none; }
+  #rose { width: min(300px, 80vw); aspect-ratio: 1; touch-action: none; cursor: pointer; flex-shrink: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .bloom-bar { width: 160px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.15); overflow: hidden; margin-top: 6px; }
   .bloom-bar i { display: block; height: 100%; width: 0; background: var(--rose); }
 
@@ -377,7 +379,6 @@
   <p class="hint" style="margin-top:26px">tap to open ✨</p>
   <div id="welcomeBack" hidden>
     <p class="hint" style="margin-top:14px;color:var(--gold)">Welcome back, Khairah 🌙</p>
-    <button class="link-btn" id="skipEnd">Skip to the end</button>
   </div>
 </section>
 
@@ -475,6 +476,7 @@
     <div class="greet"><div class="avatar" id="avatar" hidden></div><span>Dear Khairah,</span></div>
     <div id="letter"></div>
   </div>
+  <p class="hint" id="letterHint" style="font-size:14px;margin-top:8px">(tap the letter to show it all at once)</p>
   <button class="btn hidden" data-next id="letterNext">One last thing</button>
 </section>
 
@@ -557,7 +559,7 @@ const CONFIG = {
   secrets: [      // revealed when she catches a shooting star
     "🌠 You caught a shooting star! Secret #1: I practised talking to you way more times than I'll ever admit.",
     "🌠 Secret #2: This website took a lot of late nights. Every single one was worth it.",
-    "🌠 Secret #3: The 3D heart has exactly 1,100 stars. I placed every one for you. (Okay, my code did. 😅)",
+    "🌠 Secret #3: The 3D heart has exactly 800 stars. I placed every one for you. (Okay, my code did. 😅)",
     "🌠 Secret #4: You've now caught more stars than most astronomers. Make a wish."
   ],
   menu: [         // [emoji, name, food group]
@@ -614,6 +616,7 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e)
 /* ---------- starry sky + petals ---------- */
 const sky = document.getElementById("sky"), sx = sky.getContext("2d");
 let W, H, DPR, stars = [], petals = [], shooting = null, photoParts = null, rockets = [], sparksFw = [];
+const starBuckets = [[], [], [], []];
 function sizeSky() {
   DPR = Math.min(devicePixelRatio || 1, 2);
   W = innerWidth; H = innerHeight;
@@ -639,12 +642,19 @@ function rain(n) {
 }
 function drawSky() {
   sx.clearRect(0, 0, W, H);
+  // stars are batched into 4 brightness levels: one fill per level instead of one per star
+  for (const b of starBuckets) b.length = 0;
   for (const s of stars) {
     s.p += s.s;
-    sx.globalAlpha = .35 + Math.sin(s.p) * .35 + .3;
-    const depth = s.r * 14;
-    sx.fillStyle = "#fff"; sx.beginPath(); sx.arc(s.x + tilt.x * depth, s.y + tilt.y * depth, s.r, 0, 7); sx.fill();
+    const a = .65 + Math.sin(s.p) * .35, depth = s.r * 14;
+    starBuckets[Math.min(3, Math.floor((a - .3) / .7 * 4))].push(s.x + tilt.x * depth, s.y + tilt.y * depth, s.r);
   }
+  sx.fillStyle = "#fff";
+  starBuckets.forEach((b, i) => {
+    sx.globalAlpha = .3 + (i + .5) / 4 * .7; sx.beginPath();
+    for (let j = 0; j < b.length; j += 3) { sx.moveTo(b[j] + b[j + 2], b[j + 1]); sx.arc(b[j], b[j + 1], b[j + 2], 0, 7); }
+    sx.fill();
+  });
   sx.globalAlpha = 1;
   if (!shooting && Math.random() < .005) shooting = { x: Math.random() * W * .6, y: Math.random() * H * .45, l: 0 };
   if (shooting) {
@@ -686,10 +696,15 @@ function askMotion() {
 }
 addEventListener("deviceorientation", onOrient);
 addEventListener("mousemove", e => { tilt.tx = e.clientX / innerWidth * 2 - 1; tilt.ty = e.clientY / innerHeight * 2 - 1; });
+let lastTx = 9, lastTy = 9;
 (function tiltLoop() {
   tilt.x += (tilt.tx - tilt.x) * .08; tilt.y += (tilt.ty - tilt.y) * .08;
-  document.documentElement.style.setProperty("--tx", tilt.x.toFixed(3));
-  document.documentElement.style.setProperty("--ty", tilt.y.toFixed(3));
+  // writing CSS variables restyles the whole page, so skip it unless the tilt actually moved
+  if (Math.abs(tilt.x - lastTx) > .002 || Math.abs(tilt.y - lastTy) > .002) {
+    lastTx = tilt.x; lastTy = tilt.y;
+    document.documentElement.style.setProperty("--tx", tilt.x.toFixed(3));
+    document.documentElement.style.setProperty("--ty", tilt.y.toFixed(3));
+  }
   requestAnimationFrame(tiltLoop);
 })();
 
@@ -722,7 +737,6 @@ function star4(x, y, r) {
 })();
 addEventListener("pointermove", e => spark(e.clientX, e.clientY));
 addEventListener("pointerdown", e => spark(e.clientX, e.clientY, 10));
-addEventListener("touchmove", e => { const t = e.touches[0]; spark(t.clientX, t.clientY); }, { passive: true });
 
 addEventListener("resize", () => { sizeSky(); sizeFx(); }); sizeSky(); sizeFx(); drawSky();
 
@@ -731,14 +745,23 @@ const scenes = [...document.querySelectorAll(".scene")];
 const dots = document.getElementById("dots");
 scenes.forEach(() => dots.appendChild(document.createElement("i")));
 let current = 0;
-function go(n) {
-  while (scenes[n] && scenes[n].classList.contains("skip")) n++;
+function go(n, back) {
+  while (scenes[n] && scenes[n].classList.contains("skip")) n += back ? -1 : 1;
+  if (!scenes[n]) return;
   scenes[current].classList.remove("active");
   current = n; scenes[n].classList.add("active");
   [...dots.children].forEach((d, i) => d.classList.toggle("on", i === n));
+  // each screen gets a history entry, so the phone's back button steps back instead of leaving the site
+  if (!back && n >= NAME_IDX) { try { history.pushState({ s: n }, ""); } catch (e) {} }
   const enter = onEnter[scenes[n].dataset.scene];
   enter && enter();
 }
+const NAME_IDX = scenes.findIndex(s => s.dataset.scene === "1");
+addEventListener("popstate", () => {
+  const open = document.querySelector(".modal.show");
+  if (open) { open.classList.remove("show"); try { history.pushState({ s: current }, ""); } catch (e) {} return; }
+  if (current > NAME_IDX) go(current - 1, true);
+});
 document.querySelectorAll("[data-next]").forEach(b => b.addEventListener("click", () => { chime(current); go(current + 1); }));
 [...dots.children][0].classList.add("on");
 
@@ -752,9 +775,11 @@ env.addEventListener("click", () => {
 
 /* 1 · name made of stars */
 const nc = document.getElementById("nameCanvas"), nx = nc.getContext("2d");
-let parts = [], pointer = { x: -999, y: -999 }, nameRunning = false;
+let parts = [], pointer = { x: -999, y: -999 }, nameRunning = false, nameW = 0, nameH = 0;
+const NAME_COLORS = ["#ffc2d4", "#f7d38b"];
 async function buildName() {
   const r = nc.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2);
+  nameW = r.width; nameH = r.height;
   nc.width = r.width * d; nc.height = r.height * d; nx.setTransform(d, 0, 0, d, 0, 0);
   try { await document.fonts.load('100px "Great Vibes"'); } catch (e) {}
   const off = document.createElement("canvas"); off.width = r.width; off.height = r.height;
@@ -768,22 +793,26 @@ async function buildName() {
   for (let y = 0; y < r.height; y += gap) for (let x = 0; x < r.width; x += gap) {
     if (data[(y * r.width + x) * 4 + 3] > 128) parts.push({
       tx: x, ty: y, x: Math.random() * r.width, y: Math.random() * r.height,
-      vx: 0, vy: 0, c: Math.random() < .2 ? "#f7d38b" : "#ffc2d4"
+      vx: 0, vy: 0, c: Math.random() < .2 ? 1 : 0
     });
   }
   if (reduceMotion) parts.forEach(p => { p.x = p.tx; p.y = p.ty; });
   if (!nameRunning) { nameRunning = true; animName(); }
 }
 function animName() {
-  const r = nc.getBoundingClientRect();
-  nx.clearRect(0, 0, r.width, r.height);
+  nx.clearRect(0, 0, nameW, nameH);
   for (const p of parts) {
     const dx = p.x - pointer.x, dy = p.y - pointer.y, dist = Math.hypot(dx, dy);
-    if (dist < 60) { const f = (60 - dist) / 60 * 3; p.vx += dx / dist * f; p.vy += dy / dist * f; }
+    if (dist < 60 && dist > 0) { const f = (60 - dist) / 60 * 3; p.vx += dx / dist * f; p.vy += dy / dist * f; }
     p.vx += (p.tx - p.x) * .03; p.vy += (p.ty - p.y) * .03;
     p.vx *= .86; p.vy *= .86; p.x += p.vx; p.y += p.vy;
-    nx.fillStyle = p.c; nx.beginPath(); nx.arc(p.x, p.y, 1.4, 0, 7); nx.fill();
   }
+  // one path per colour instead of one per particle
+  NAME_COLORS.forEach((col, ci) => {
+    nx.fillStyle = col; nx.beginPath();
+    for (const p of parts) if (p.c === ci) { nx.moveTo(p.x + 1.4, p.y); nx.arc(p.x, p.y, 1.4, 0, 7); }
+    nx.fill();
+  });
   if (scenes[current].dataset.scene === "1") requestAnimationFrame(animName); else nameRunning = false;
 }
 function setPointer(e) {
@@ -834,24 +863,27 @@ const letterEl = document.getElementById("letter");
 let typing = null, typedOnce = false;
 function typeLetter() {
   if (typedOnce) return; typedOnce = true;
-  const text = CONFIG.letter; let i = 0;
-  const render = n => {
-    letterEl.innerHTML = text.slice(0, n).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")
-      + (n < text.length ? '<span class="caret"></span>' : "");
-  };
+  const text = CONFIG.letter, paper = document.getElementById("paper");
+  // one text node that grows, instead of rebuilding the whole letter on every character
+  letterEl.style.whiteSpace = "pre-wrap"; letterEl.textContent = "";
+  const tn = document.createTextNode(""), caret = document.createElement("span");
+  caret.className = "caret"; letterEl.append(tn, caret);
+  let i = 0, done = false;
   const finish = () => {
-    clearInterval(typing); typing = null; render(text.length);
+    if (done) return; done = true;
+    clearInterval(typing); typing = null; tn.data = text; caret.remove();
+    document.getElementById("letterHint").remove();
     letterEl.insertAdjacentHTML("beforeend",
       `<p style="margin-top:18px;text-align:right;font-style:italic">— ${CONFIG.from ? CONFIG.from : "someone who thinks you're wonderful"}</p>`);
     document.getElementById("letterNext").classList.remove("hidden");
   };
   if (reduceMotion) return finish();
   typing = setInterval(() => {
-    i += 1; render(i);
-    const paper = document.getElementById("paper"); paper.scrollTop = paper.scrollHeight;
+    i = Math.min(text.length, i + 3); tn.data = text.slice(0, i);
+    paper.scrollTop = paper.scrollHeight;
     if (i >= text.length) finish();
-  }, 32);
-  document.getElementById("paper").addEventListener("click", () => { if (typing) finish(); });
+  }, 35);
+  paper.addEventListener("click", finish);
 }
 
 /* 5 · ending */
@@ -870,6 +902,7 @@ const photo = document.getElementById("photo"), photoScene = document.getElement
 photo.onerror = () => { photoScene.classList.add("skip"); dots.children[scenes.indexOf(photoScene)].style.display = "none"; };
 photo.src = window.EMBEDDED_PHOTO || CONFIG.photo;
 let photoStarted = false;
+const PGW = 36, PGH = 48; // photo particle grid: 1,728 particles
 function samplePhoto(gw, gh) {
   // reproduce the CSS crop (object-fit: cover, position 50% 30%, scale 1.75 around 39% 45%) on a tiny canvas
   const c = document.createElement("canvas"); c.width = gw; c.height = gh;
@@ -889,7 +922,7 @@ function developPhoto() {
     setTimeout(() => { rain(20); next.classList.remove("hidden"); }, reduceMotion ? 0 : 3500);
   };
   if (reduceMotion || !photo.naturalWidth) return classic();
-  let data; const GW = 48, GH = 64;
+  let data; const GW = PGW, GH = PGH;
   try { data = samplePhoto(GW, GH); } catch (e) { return classic(); }
   pol.classList.add("assemble");
   const t0 = performance.now(); photoParts = { t0, list: [], done: false };
@@ -909,7 +942,7 @@ function developPhoto() {
 function drawPhotoParts() {
   if (!photoParts) return;
   const crop = document.querySelector("#polaroid .crop").getBoundingClientRect();
-  const now = performance.now(), cell = crop.width / 48;
+  const now = performance.now(), cell = crop.width / PGW;
   // once the real photo starts fading in, fade the particles out over it
   if (!photoParts.fadeAt && document.getElementById("polaroid").classList.contains("developed")) photoParts.fadeAt = now;
   const fade = photoParts.fadeAt ? Math.max(0, 1 - (now - photoParts.fadeAt) / 1200) : 1;
@@ -940,6 +973,8 @@ function pluck(freq, t, vol, len) {
   o.connect(g).connect(audio.destination); o.start(t); o.stop(t + len + .05);
 }
 function scheduleMusic() {
+  // if the timer was throttled (another app was open), skip missed notes instead of playing them all at once
+  if (nextNoteAt < audio.currentTime) nextNoteAt = audio.currentTime + .05;
   while (nextNoteAt < audio.currentTime + .25) {
     const m = MELODY[step % 16];
     if (m) pluck(hz(m), nextNoteAt, .045, 1.4);
@@ -956,6 +991,16 @@ function setMusic(on) {
   } catch (e) {}
 }
 musicBtn.addEventListener("click", () => setMusic(!musicOn));
+document.addEventListener("visibilitychange", () => {
+  if (!audio) return;
+  try {
+    if (document.hidden) { clearInterval(musicTimer); audio.suspend(); }
+    else {
+      audio.resume();
+      if (musicOn) { clearInterval(musicTimer); nextNoteAt = audio.currentTime + .1; musicTimer = setInterval(scheduleMusic, 100); }
+    }
+  } catch (e) {}
+});
 env.addEventListener("click", () => { if (!musicOn) setMusic(true); }, { once: true });
 
 /* ---------- date plate ---------- */
@@ -1004,11 +1049,9 @@ function buildConstellation() {
   svg.innerHTML = ""; svg.classList.remove("done"); nextStar = 0;
   for (let i = 0; i < 40; i++) svg.appendChild(el("circle", { class: "bg", cx: Math.random() * 100, cy: Math.random() * 100, r: Math.random() * .5 + .2 }));
   svg.appendChild(el("path", { class: "fill", d: "M" + HEART.map(p => p.join(" ")).join(" L") + " Z" }));
-  starDots = HEART.map(([x, y], i) => {
+  starDots = HEART.map(([x, y]) => {
     const dot = el("circle", { class: "st", cx: x, cy: y, r: 1.6 });
-    const hit = el("circle", { class: "hit", cx: x, cy: y, r: 7 });
-    hit.addEventListener("click", () => tapStar(i));
-    svg.append(dot, hit);
+    svg.append(dot);
     return dot;
   });
   starDots[0].setAttribute("class", "next");
@@ -1040,15 +1083,23 @@ function tapStar(i) {
   }, 300);
 }
 buildConstellation();
+svg.addEventListener("click", e => {
+  // only the glowing star matters, so any tap close to it counts, even if another star is nearby
+  const m = svg.getScreenCTM(); if (!m || nextStar >= HEART.length) return;
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const q = pt.matrixTransform(m.inverse()), [x, y] = HEART[nextStar];
+  if (Math.hypot(q.x - x, q.y - y) < 11) tapStar(nextStar);
+});
 
 /* ---------- reply + days ---------- */
 CONFIG.replies.forEach(([style, label, msg]) => {
   const a = document.createElement("a");
   a.className = style; a.textContent = label; a.target = "_blank"; a.rel = "noopener";
+  const waLink = text => `https://wa.me/${CONFIG.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+  a.href = waLink(msg); // a real link from the start; some phones ignore taps on links without one
   a.addEventListener("click", e => {
     const plate = picked.map(i => CONFIG.menu[i][1]).join(", ");
-    const text = msg + (plate ? `\n\nP.S. Our date plate: ${plate}` : "");
-    a.href = `https://wa.me/${CONFIG.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+    a.href = waLink(msg + (plate ? `\n\nP.S. Our date plate: ${plate}` : ""));
     if (style === "yes" && !a.dataset.celebrated) {
       // first tap: the night turns into sunrise, fireworks, heart burst. Second tap sends the answer.
       e.preventDefault(); a.dataset.celebrated = "1";
@@ -1102,7 +1153,10 @@ const BOOT = `<span class="dim">$</span> npm run deploy <span class="pk">--for=k
 
 <span class="ok">✔ Deployed successfully.</span> Opening...`;
 let bootSkip = null, bootDone = false;
-function bootEnd() { if (bootDone) return; bootDone = true; setTimeout(() => go(current + 1), 900); }
+function bootEnd() {
+  if (bootDone) return; bootDone = true;
+  setTimeout(() => { if (scenes[current].dataset.scene === "boot") go(current + 1); }, 900);
+}
 bootSkip = typeHTML(document.getElementById("boot"), BOOT, 22, bootEnd);
 document.getElementById("bootScene").addEventListener("click", () => { bootSkip && bootSkip(); bootEnd(); });
 
@@ -1141,7 +1195,7 @@ const HPTS = [];
 (function buildHeart() {
   // Taubin heart surface: (x² + 9/4·y² + z² − 1)³ − x²z³ − 9/80·y²z³ = 0, found by bisection along random rays
   const f = (x, y, z) => { const a = x * x + 2.25 * y * y + z * z - 1; return a * a * a - x * x * z * z * z - .1125 * y * y * z * z * z; };
-  for (let i = 0; i < 1100; i++) {
+  for (let i = 0; i < 800; i++) {
     let dx = Math.random() * 2 - 1, dy = Math.random() * 2 - 1, dz = Math.random() * 2 - 1;
     const m = Math.hypot(dx, dy, dz) || 1; dx /= m; dy /= m; dz /= m;
     let lo = 0, hi = 3;
@@ -1151,7 +1205,7 @@ const HPTS = [];
   }
 })();
 let hAngle = 0, hVel = 0, hDrag = null, burst = 0, heartOn = false;
-const HS = 180;
+const HS = 180, HBANDS = [[], [], [], [], [], []];
 function sizeHeart() { const d = Math.min(devicePixelRatio || 1, 2); hc.width = HS * d; hc.height = HS * d; hx.setTransform(d, 0, 0, d, 0, 0); }
 function drawHeart(now) {
   hx.clearRect(0, 0, HS, HS);
@@ -1164,19 +1218,24 @@ function drawHeart(now) {
   burst *= .965;
   const t = now / 1000, beat = 1 + .06 * Math.max(Math.sin(t * 7.5) ** 16, .7 * Math.sin(t * 7.5 + .9) ** 16);
   const ca = Math.cos(hAngle), sa = Math.sin(hAngle), tiltA = .25, ct = Math.cos(tiltA), st = Math.sin(tiltA);
-  const pts = HPTS.map(p => {
+  // points go into 6 depth bands, drawn back to front with one fill each
+  for (const b of HBANDS) b.length = 0;
+  for (const p of HPTS) {
     const k = beat * (1 + burst * p.b);
-    let x = p.x * k, y = p.y * k, z = p.z * k;
+    const x = p.x * k, y = p.y * k, z = p.z * k;
     const x1 = x * ca - y * sa, y1 = x * sa + y * ca;    // spin around vertical axis
     const y2 = y1 * ct - z * st, z2 = y1 * st + z * ct;  // slight forward tilt
     const persp = 5 / Math.max(5 + y2, 1.5); // clamp so burst particles never pass the camera
-    return { sx: HS / 2 + x1 * 46 * persp, sy: HS / 2 + 4 - z2 * 46 * persp, d: y2, persp };
-  }).sort((a, b) => b.d - a.d);
-  for (const p of pts) {
-    const near = Math.max(0, Math.min(1, (1.3 - p.d) / 2.6));
-    hx.fillStyle = `hsla(${335 + near * 20},95%,${62 + near * 22}%,${.25 + near * .75})`;
-    hx.beginPath(); hx.arc(p.sx, p.sy, 1.3 * p.persp, 0, 7); hx.fill();
+    const near = Math.max(0, Math.min(1, (1.3 - y2) / 2.6));
+    HBANDS[Math.min(5, Math.floor(near * 6))].push(HS / 2 + x1 * 46 * persp, HS / 2 + 4 - z2 * 46 * persp, 1.3 * persp);
   }
+  HBANDS.forEach((b, i) => {
+    const near = (i + .5) / 6;
+    hx.fillStyle = `hsla(${335 + near * 20},95%,${62 + near * 22}%,${.25 + near * .75})`;
+    hx.beginPath();
+    for (let j = 0; j < b.length; j += 3) { hx.moveTo(b[j] + b[j + 2], b[j + 1]); hx.arc(b[j], b[j + 1], b[j + 2], 0, 7); }
+    hx.fill();
+  });
   if (heartOn) requestAnimationFrame(drawHeart);
 }
 function startHeart() { sizeHeart(); if (!heartOn) { heartOn = true; requestAnimationFrame(drawHeart); } }
@@ -1192,7 +1251,8 @@ function heartBurst() { burst = 1.4; }
 
 if (CONFIG.whatsapp) {
   const n = CONFIG.whatsapp.replace(/\D/g, "");
-  document.getElementById("waText").textContent = `If a button doesn't open, my WhatsApp is +${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6, 9)} ${n.slice(9)}`;
+  // non-breaking spaces keep the number on one line
+  document.getElementById("waText").textContent = `If a button doesn't open, my WhatsApp is ${["+" + n.slice(0, 3), n.slice(3, 6), n.slice(6, 9), n.slice(9)].join("\u00a0")}`;
 }
 
 /* ---------- time-aware greeting ---------- */
@@ -1347,6 +1407,7 @@ function buildCoupons() {
     cv.addEventListener("pointerdown", e => { down = true; cv.setPointerCapture(e.pointerId); scratch(e); });
     cv.addEventListener("pointermove", scratch);
     cv.addEventListener("pointerup", () => { down = false; });
+    cv.addEventListener("pointercancel", () => { down = false; });
   });
 }
 document.getElementById("couponBtn").addEventListener("click", () => { couponModal.classList.add("show"); buildCoupons(); });
@@ -1448,9 +1509,9 @@ document.getElementById("cardBtn").addEventListener("click", async () => {
     if (dl) {
       try { await dl.save({ filename: "khairah-keepsake.png", data: blob }); toast("📸 Keepsake saved."); rain(25); chime(4); }
       catch (err) { if (err && err.code !== "declined") showCard(url); }
-    } else if (!window.claude) {
+    } else if (!window.claude && !matchMedia("(pointer: coarse)").matches) {
       const a = document.createElement("a"); a.download = "khairah-keepsake.png"; a.href = url; a.click();
-      toast("📸 Keepsake saved. Check your downloads or gallery."); rain(25); chime(4);
+      toast("📸 Keepsake saved. Check your downloads."); rain(25); chime(4);
     } else showCard(url);
   } catch (e) { toast("Couldn't create the card on this device, sorry 🙈"); }
 });
@@ -1463,13 +1524,7 @@ document.getElementById("cardClose").addEventListener("click", () => cardModal.c
 cardModal.addEventListener("click", e => { if (e.target === cardModal) cardModal.classList.remove("show"); });
 
 /* ---------- welcome back ---------- */
-const endScene = document.querySelector('[data-scene="5"]');
-if (store.get("seenEnd")) {
-  document.getElementById("welcomeBack").hidden = false;
-  document.getElementById("skipEnd").addEventListener("click", e => {
-    e.stopPropagation(); askMotion(); if (!musicOn) setMusic(true); go(scenes.indexOf(endScene));
-  });
-}
+if (store.get("seenEnd")) document.getElementById("welcomeBack").hidden = false;
 
 const onEnter = { rose: startRose, code: typeCode, "5": () => { startHeart(); store.set("seenEnd", true); }, "1": () => { buildName(); showMeaning(); }, photo: developPhoto, "2": fillLabel, "4": typeLetter };
 </script>
