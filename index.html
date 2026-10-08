@@ -21,7 +21,8 @@
     --rose: #ff8fb1;
     --rose-deep: #e75a87;
     --gold: #f7d38b;
-    --card: rgba(255, 255, 255, 0.07);
+    --card: rgba(30, 22, 56, 0.94);
+    --card-on: rgba(82, 36, 74, 0.96);
     --card-line: rgba(255, 255, 255, 0.16);
     color-scheme: dark;
   }
@@ -48,6 +49,10 @@
   .scene.active { opacity: 1; pointer-events: auto; transform: none; }
   /* screens she can't see shouldn't burn battery on animations */
   .scene:not(.active), .scene:not(.active) * { animation-play-state: paused !important; }
+  /* text that sits straight on the night sky gets a soft dark halo, so no star lands on a letter */
+  .scene > .hint, .scene > .script, .scene > .final, .scene > .small, .scene > .ask, .scene > .verdict, .scene > .wish, .meaning {
+    text-shadow: 0 0 4px var(--night), 0 0 10px var(--night), 0 0 18px var(--night);
+  }
   .scene > :first-child { margin-top: auto; }
   .scene > :last-child { margin-bottom: auto; }
 
@@ -57,11 +62,11 @@
 
   .btn {
     margin-top: 28px; padding: 12px 28px; border-radius: 999px;
-    border: 1px solid var(--rose); background: rgba(255, 143, 177, .12);
+    border: 1px solid var(--rose); background: rgba(58, 28, 62, .94);
     color: var(--ink); font: inherit; font-size: 18px; cursor: pointer;
     transition: background .3s, transform .2s;
   }
-  .btn:hover { background: rgba(255, 143, 177, .25); }
+  .btn:hover { background: var(--card-on); }
   .btn:active { transform: scale(.96); }
   .btn.hidden { visibility: hidden; }
 
@@ -163,7 +168,7 @@
   }
   .fruit:nth-child(2n) { animation-delay: -1.5s; }
   .fruit:hover { transform: scale(1.08); }
-  .fruit.seen { background: rgba(255, 143, 177, .2); border-color: var(--rose); }
+  .fruit.seen { background: var(--card-on); border-color: var(--rose); }
   @keyframes bob { 50% { translate: 0 -6px; } }
   .note {
     min-height: 110px; max-width: 420px; margin-top: 14px; padding: 16px 18px;
@@ -202,7 +207,7 @@
     transition: background .3s, transform .2s;
   }
   .reply a:active { transform: scale(.97); }
-  .reply a.yes { border-color: var(--rose); background: rgba(255, 143, 177, .22); }
+  .reply a.yes { border-color: var(--rose); background: var(--card-on); }
 
   /* Music toggle */
   .music {
@@ -228,7 +233,7 @@
     color: var(--ink); font: inherit; font-size: 14px; line-height: 1.2; cursor: pointer;
   }
   .dish span { display: block; font-size: 30px; margin-bottom: 2px; }
-  .dish.on { border-color: var(--rose); background: rgba(255, 143, 177, .22); }
+  .dish.on { border-color: var(--rose); background: var(--card-on); }
 
   /* Constellation lock */
   #constel { width: min(330px, 84vw); aspect-ratio: 1; margin-top: 6px; touch-action: manipulation; flex-shrink: 0; cursor: pointer; }
@@ -845,13 +850,15 @@ function fillLabel() {
 /* 3 · fruit basket */
 const basket = document.getElementById("basket"), note = document.getElementById("note");
 const seen = new Set();
+let noteTimer;
 CONFIG.fruits.forEach(([emoji, text], i) => {
   const b = document.createElement("button");
   b.className = "fruit"; b.textContent = emoji; b.setAttribute("aria-label", "Open a note");
   b.addEventListener("click", () => {
     chime(i); buzz(15); b.classList.add("seen"); seen.add(i);
     note.style.opacity = 0;
-    setTimeout(() => { note.textContent = text; note.style.opacity = 1; }, 250);
+    clearTimeout(noteTimer); // quick taps: only the last fruit's message shows
+    noteTimer = setTimeout(() => { note.textContent = `${emoji}  ${text}`; note.style.opacity = 1; }, 250);
     if (seen.size >= 3) document.getElementById("basketNext").classList.remove("hidden");
     if (seen.size === CONFIG.fruits.length) rain(25);
   });
