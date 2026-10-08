@@ -372,7 +372,8 @@
     <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>~/for-khairah</span></div>
     <pre id="boot"></pre>
   </div>
-  <p class="hint" style="margin-top:16px;font-size:15px">tap to skip</p>
+  <p class="hint" id="bootHint" style="margin-top:16px;font-size:15px">(tap to show it all at once)</p>
+  <button class="btn hidden" data-next id="bootNext">Continue</button>
 </section>
 
 <section class="scene" data-scene="0">
@@ -1128,7 +1129,7 @@ CONFIG.replies.forEach(([style, label, msg]) => {
 }
 
 /* ---------- type out highlighted HTML, character by character ---------- */
-function typeHTML(el, html, speed, done) {
+function typeHTML(el, html, speed, done, perTick = 2) {
   el.innerHTML = html;
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), nodes = [];
   while (walker.nextNode()) nodes.push([walker.currentNode, walker.currentNode.textContent]);
@@ -1138,7 +1139,7 @@ function typeHTML(el, html, speed, done) {
   let ni = 0, ci = 0, timer;
   const finish = () => { clearInterval(timer); nodes.forEach(([n, t]) => n.textContent = t); cur.remove(); done && done(); };
   timer = setInterval(() => {
-    for (let k = 0; k < 2 && ni < nodes.length; k++) {
+    for (let k = 0; k < perTick && ni < nodes.length; k++) {
       const [n, t] = nodes[ni];
       n.textContent = t.slice(0, ++ci);
       n.after(cur); // keep the cursor right after the text being typed
@@ -1158,14 +1159,17 @@ const BOOT = `<span class="dim">$</span> npm run deploy <span class="pk">--for=k
 <span class="dim">&gt;</span> checking courage........... <span class="ok">100%</span>
 <span class="dim">&gt;</span> rendering stars &amp; music.... <span class="ok">✓</span>
 
-<span class="ok">✔ Deployed successfully.</span> Opening...`;
+<span class="ok">✔ Deployed successfully.</span> Ready when you are.`;
 let bootSkip = null, bootDone = false;
 function bootEnd() {
+  // the terminal waits for her: Continue appears once everything is typed
   if (bootDone) return; bootDone = true;
-  setTimeout(() => { if (scenes[current].dataset.scene === "boot") go(current + 1); }, 900);
+  document.getElementById("bootHint").remove();
+  document.getElementById("bootNext").classList.remove("hidden");
 }
-bootSkip = typeHTML(document.getElementById("boot"), BOOT, 22, bootEnd);
-document.getElementById("bootScene").addEventListener("click", () => { bootSkip && bootSkip(); bootEnd(); });
+// one character every 30ms: a comfortable reading pace (about 10 seconds)
+bootSkip = typeHTML(document.getElementById("boot"), BOOT, 30, bootEnd, 1);
+document.querySelector("#bootScene .term").addEventListener("click", () => { if (!bootDone && bootSkip) bootSkip(); });
 
 /* code scene */
 const CODE = `<span class="tok-c">// feelings.js — compiled with love</span>
