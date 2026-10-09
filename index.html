@@ -174,8 +174,8 @@
     min-height: 110px; max-width: 420px; margin-top: 14px; padding: 16px 18px;
     border-radius: 16px; background: var(--card); border: 1px solid var(--card-line);
     font-size: 20px; display: flex; align-items: center; justify-content: center;
-    transition: opacity .4s;
   }
+  .note-in { animation: fade .45s ease; }
 
   /* Scene 4: letter */
   .paper {
@@ -430,9 +430,10 @@
 <!-- 3 · Fruit basket -->
 <section class="scene" data-scene="3">
   <h2 class="script">A healthy diet</h2>
-  <p class="hint">Six fruits, six true things. Pick one.</p>
+  <p class="hint">Six fruits, six true things. Pick them all.</p>
   <div class="basket" id="basket"></div>
   <div class="note" id="note"><span class="hint">🧺</span></div>
+  <p class="hint" id="fruitCount" style="font-size:15px;margin-top:10px">0 of 6 opened</p>
   <button class="btn hidden" data-next id="basketNext">Continue</button>
 </section>
 
@@ -851,17 +852,19 @@ function fillLabel() {
 /* 3 · fruit basket */
 const basket = document.getElementById("basket"), note = document.getElementById("note");
 const seen = new Set();
-let noteTimer;
+
 CONFIG.fruits.forEach(([emoji, text], i) => {
   const b = document.createElement("button");
   b.className = "fruit"; b.textContent = emoji; b.setAttribute("aria-label", "Open a note");
   b.addEventListener("click", () => {
     chime(i); buzz(15); b.classList.add("seen"); seen.add(i);
-    note.style.opacity = 0;
-    clearTimeout(noteTimer); // quick taps: only the last fruit's message shows
-    noteTimer = setTimeout(() => { note.textContent = `${emoji}  ${text}`; note.style.opacity = 1; }, 250);
-    if (seen.size >= 3) document.getElementById("basketNext").classList.remove("hidden");
-    if (seen.size === CONFIG.fruits.length) rain(25);
+    const msg = document.createElement("span");
+    msg.className = "note-in"; msg.textContent = `${emoji}  ${text}`;
+    note.replaceChildren(msg);
+    const total = CONFIG.fruits.length;
+    document.getElementById("fruitCount").textContent =
+      seen.size < total ? `${seen.size} of ${total} opened` : `All ${total} opened 💖`;
+    if (seen.size === total) { document.getElementById("basketNext").classList.remove("hidden"); rain(25); }
   });
   basket.appendChild(b);
 });
